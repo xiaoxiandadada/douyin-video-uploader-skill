@@ -1,0 +1,4 @@
+interface:
+  display_name: "Douyin Video Uploader"
+  short_description: "Auto upload and publish Douyin videos."
+  default_prompt: "Use $douyin-video-uploader to publish the next scheduled Douyin video from my queue."

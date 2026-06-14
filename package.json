@@ -1,0 +1,25 @@
+{
+  "name": "douyin-video-uploader",
+  "version": "1.0.0",
+  "description": "Codex skill for automatic Douyin Creator Center video uploads and publishing.",
+  "type": "module",
+  "bin": {
+    "douyin-playwright-publisher": "./scripts/douyin_playwright_publisher.mjs"
+  },
+  "scripts": {
+    "check": "node --check scripts/douyin_playwright_publisher.mjs",
+    "publish-video": "node scripts/douyin_playwright_publisher.mjs"
+  },
+  "keywords": [
+    "codex-skill",
+    "douyin",
+    "creator-center",
+    "video-upload",
+    "playwright"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}
