@@ -86,6 +86,37 @@ async function dismissModals(page) {
   }
 }
 
+async function handleBlockingModals(page) {
+  await clearBlockingOverlays(page);
+  const handled = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const modal = page.locator('[role="modal"], .semi-modal-wrap').first();
+    if ((await modal.count()) === 0) break;
+    const text = (await modal.innerText({ timeout: 1000 }).catch(() => "")).slice(0, 1000);
+    const checkbox = modal.locator('input[type="checkbox"], .semi-checkbox, [role="checkbox"]').first();
+    if ((await checkbox.count()) > 0) {
+      await checkbox.click({ force: true, timeout: 1500 }).catch(() => {});
+    }
+    let clicked = false;
+    for (const label of ["确认发布", "继续发布", "确认", "确定", "同意", "我知道了", "知道了", "完成", "下一步"]) {
+      const button = modal.getByRole("button", { name: label, exact: true });
+      if ((await button.count()) > 0) {
+        await button.first().click({ force: true, timeout: 2000 }).catch(() => {});
+        handled.push({ label, text });
+        clicked = true;
+        await page.waitForTimeout(800);
+        break;
+      }
+    }
+    if (!clicked) {
+      await page.keyboard.press("Escape").catch(() => {});
+      handled.push({ label: "Escape", text });
+      await page.waitForTimeout(800);
+    }
+  }
+  return handled;
+}
+
 async function pageState(page) {
   return await page.evaluate(() => {
     const text = document.body?.innerText || "";
@@ -95,13 +126,29 @@ async function pageState(page) {
     return {
       url: location.href,
       title: document.title,
-      bodySample: text.slice(0, 2200),
+      bodyText: text,
+      bodySample: text.slice(0, 6000),
       hasLoginHint: /登录|扫码|验证码/.test(text) && !/发布作品|上传视频|作品标题/.test(text),
+      hasVerificationChallenge: /短信验证码|接收短信验证码|获取验证码|使用原设备扫码|为确保是本人操作/.test(text),
       hasUploadPrompt: /点击上传/.test(text) && /拖入此区域/.test(text),
       hasUploadedHint: /重新上传|视频预览|作品预览|快速检测|上传成功|检测完成/.test(text),
       titleValue: titleInput?.value || "",
     };
   });
+}
+
+function compactState(state) {
+  if (!state || typeof state !== "object") return state;
+  const { bodyText, ...rest } = state;
+  return rest;
+}
+
+function compactResult(result) {
+  if (!result || typeof result !== "object") return result;
+  return {
+    ...result,
+    state: compactState(result.state),
+  };
 }
 
 async function waitForLoginIfNeeded(page) {
@@ -155,12 +202,24 @@ async function uploadVideo(page, videoFile) {
 }
 
 async function waitForUploadToSettle(page) {
-  const deadline = Date.now() + 5 * 60 * 1000;
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let stableChecks = 0;
   let latest = await pageState(page);
   while (Date.now() < deadline) {
     latest = await pageState(page);
-    const uploading = /上传过程中|当前速度|剩余时间|取消上传|\d+%/.test(latest.bodySample);
-    if (!uploading) return { settled: true, state: latest };
+    const text = latest.bodyText || latest.bodySample || "";
+    const uploadFailed = /上传失败|文件上传失败|视频处理失败|检测失败/.test(text);
+    if (uploadFailed) {
+      return { settled: false, failed: true, reason: "upload_failed_text_seen", state: latest };
+    }
+    const uploading = /上传过程中|当前速度|剩余时间|取消上传|已上传[:：]|检测中\s*\d{1,3}%|(?:^|[^\d])\d{1,3}%/.test(text);
+    const uploadSurfaceGone = !latest.hasUploadPrompt;
+    if (!uploading && uploadSurfaceGone) {
+      stableChecks += 1;
+      if (stableChecks >= 3) return { settled: true, state: latest };
+    } else {
+      stableChecks = 0;
+    }
     await page.waitForTimeout(2000);
   }
   return { settled: false, state: latest };
@@ -251,18 +310,29 @@ async function setSchedule(page, payload) {
 
 async function submit(page, payload, schedule = {}) {
   await clearBlockingOverlays(page);
+  await handleBlockingModals(page);
   const immediate = payload.status?.recommended_publish_mode === "immediate" || schedule.mode === "immediate" || !schedule.scheduled;
   const labels = immediate ? ["发布"] : ["定时发布", "发布"];
   for (const label of labels) {
     const button = page.getByRole("button", { name: label, exact: true });
     if ((await button.count()) === 1) {
-      await button.click();
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await button.click({ timeout: 10000 });
+          break;
+        } catch (error) {
+          const handled = await handleBlockingModals(page);
+          if (attempt === 2 || handled.length === 0) throw error;
+        }
+      }
       await page.waitForTimeout(1500);
-      for (const confirm of ["确认发布", "确定", "确认"]) {
+      await handleBlockingModals(page);
+      for (const confirm of ["确认发布", "继续发布", "确定", "确认"]) {
         const confirmButton = page.getByRole("button", { name: confirm, exact: true });
         if ((await confirmButton.count()) === 1) {
           await confirmButton.click();
           await page.waitForTimeout(1500);
+          await handleBlockingModals(page);
           break;
         }
       }
@@ -270,6 +340,30 @@ async function submit(page, payload, schedule = {}) {
     }
   }
   return { submitted: false, reason: "publish_button_not_found" };
+}
+
+async function waitForPublishConfirmation(page) {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let latest = await pageState(page);
+  while (Date.now() < deadline) {
+    latest = await pageState(page);
+    const text = latest.bodyText || latest.bodySample || "";
+    const url = latest.url || page.url();
+    if (latest.hasVerificationChallenge) {
+      return { confirmed: false, reason: "verification_challenge_seen", state: latest };
+    }
+    const failedByText = /发布失败|提交失败|请稍后重试|网络异常|审核未通过/.test(text);
+    if (failedByText) {
+      return { confirmed: false, reason: "failure_text_seen", state: latest };
+    }
+    const confirmedByText = /发布成功|作品发布成功|提交成功|已提交审核|审核中|发布完成/.test(text);
+    const confirmedByUrl = /creator-micro\/content\/(manage|home|overview)|creator-micro\/home/.test(url);
+    if (confirmedByText || confirmedByUrl) {
+      return { confirmed: true, reason: confirmedByText ? "success_text_seen" : "success_url_seen", state: latest };
+    }
+    await page.waitForTimeout(2000);
+  }
+  return { confirmed: false, reason: "timeout_waiting_for_publish_confirmation", state: latest };
 }
 
 async function main() {
@@ -296,22 +390,34 @@ async function main() {
   await dismissModals(page);
   const uploadState = await uploadVideo(page, payload.video_file);
   const uploadSettled = await waitForUploadToSettle(page);
+  if (!uploadSettled.settled) {
+    throw new Error(`Upload did not settle; refusing to submit. state=${JSON.stringify(compactResult(uploadSettled))}`);
+  }
   await fillMetadata(page, payload);
   const ai = await declareAi(page);
+  const modalsAfterAi = await handleBlockingModals(page);
   const schedule = await setSchedule(page, payload);
   const beforeSubmit = await pageState(page);
   let submitResult = { submitted: false, dryRun: true };
+  let publishConfirmation = { confirmed: false, dryRun: true };
   if (!dryRun) {
     submitResult = await submit(page, payload, schedule);
+    if (submitResult.submitted) {
+      publishConfirmation = await waitForPublishConfirmation(page);
+    }
   }
 
   const marker = `published:${new Date().toISOString()}`;
-  if (submitResult.submitted && payload.project_root && payload.index) {
+  const confirmedPosted = dryRun || (submitResult.submitted && publishConfirmation.confirmed);
+  if (!dryRun && submitResult.submitted && !publishConfirmation.confirmed) {
+    throw new Error(`Publish click was not confirmed by Douyin. result=${JSON.stringify(compactResult(publishConfirmation))}`);
+  }
+  if (!dryRun && confirmedPosted && payload.project_root && payload.index) {
     runJson("python3", [QUEUE, "--project", payload.project_root, "--index", String(payload.index), "--mark-posted-url", marker]);
   }
 
   console.log(JSON.stringify({
-    ok: submitResult.submitted || dryRun,
+    ok: confirmedPosted,
     dryRun,
     payload: {
       index: payload.index,
@@ -324,12 +430,14 @@ async function main() {
       hasUploadedHint: uploadState.hasUploadedHint,
       hasUploadPrompt: uploadState.hasUploadPrompt,
     },
-    uploadSettled,
+    uploadSettled: compactResult(uploadSettled),
     ai,
+    modalsAfterAi,
     schedule,
-    beforeSubmit,
+    beforeSubmit: compactState(beforeSubmit),
     submitResult,
-    trackingMarker: submitResult.submitted ? marker : null,
+    publishConfirmation: compactResult(publishConfirmation),
+    trackingMarker: !dryRun && confirmedPosted ? marker : null,
   }, null, 2));
   await context.close();
 }

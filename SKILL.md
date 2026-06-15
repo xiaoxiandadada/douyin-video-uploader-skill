@@ -23,6 +23,7 @@ Ask again only when the video, account, platform, caption, schedule time, or fin
 1. Prefer the standard-browser publisher for fully automatic upload/publish:
    - Run `scripts/douyin_playwright_publisher.mjs --project /Users/fairy/Documents/future/asmr_douyin_2day_launch --index N`.
    - It launches local Chrome/Edge with a persistent profile, uses Playwright `setInputFiles` for the video, fills metadata, selects AI declaration, sets timing, submits, and updates `tracking.csv`.
+   - It updates `tracking.csv` only after upload progress has settled and Douyin shows a publish confirmation state. A clicked publish button alone is not treated as success.
    - If that browser profile is not logged in, rerun with `--wait-login`, let the user log in once in the launched Chrome/Edge window, then continue. Future runs reuse the same profile.
 2. If browser control is needed only for the in-app browser, first load the Browser skill and bootstrap the in-app browser.
 3. Resolve the upload payload:
@@ -55,6 +56,8 @@ Ask again only when the video, account, platform, caption, schedule time, or fin
 9. After success:
    - Capture the visible success state and URL if available.
    - Update `tracking.csv` via `scripts/queue_payload.py --project <root> --index N --mark-posted-url <url-or-success-note>`.
+   - If the page does not show a success/audit/redirect confirmation after clicking publish, do not update `tracking.csv`; report the visible state and retry or diagnose the blocker.
+   - If Douyin shows an SMS verification or original-device scan challenge after clicking publish, treat it as blocked by account verification, not as published. Ask the user to complete that verification in the opened browser, then rerun the publisher.
    - If comments are available, post/pin the `pinned_comment`; otherwise report it as the next manual/mobile step.
 
 ## Browser Helper

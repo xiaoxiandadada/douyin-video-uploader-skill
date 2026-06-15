@@ -11,7 +11,8 @@ This Codex skill uploads and publishes videos to Douyin Creator Center from a lo
 - Select the AI-generated content declaration.
 - Publish immediately.
 - Schedule publishing when Douyin allows it: at least 2 hours ahead and within 14 days.
-- Write the publish marker back to `tracking.csv`.
+- Write the publish marker back to `tracking.csv` only after upload progress has settled and Douyin confirms success, audit submission, or a post-publish redirect.
+- Stop without marking `tracking.csv` as published if Douyin asks for SMS verification or an original-device scan after the publish click.
 - Keep in-app browser and macOS file-picker fallbacks for constrained environments.
 
 ## Structure
