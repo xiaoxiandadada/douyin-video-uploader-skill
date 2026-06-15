@@ -13,6 +13,7 @@ This Codex skill uploads and publishes videos to Douyin Creator Center from a lo
 - Schedule publishing when Douyin allows it: at least 2 hours ahead and within 14 days.
 - Write the publish marker back to `tracking.csv` only after upload progress has settled and Douyin confirms success, audit submission, or a post-publish redirect.
 - Stop without marking `tracking.csv` as published if Douyin asks for SMS verification or an original-device scan after the publish click.
+- With explicit user authorization, OCR a visible iPhone mirror or screenshot for the current Douyin SMS code and fill it into the verification dialog. The code is not printed to logs or stored.
 - Keep in-app browser and macOS file-picker fallbacks for constrained environments.
 
 ## Structure
@@ -26,6 +27,8 @@ douyin-video-uploader/
 │   ├── douyin_playwright_publisher.mjs
 │   ├── douyin_upload_helper.mjs
 │   ├── queue_payload.py
+│   ├── douyin_otp_from_mirror.sh
+│   ├── extract_douyin_otp_from_image.swift
 │   ├── diagnose_macos_upload_permission.sh
 │   ├── file_chooser_macos.applescript
 │   └── macos_click_upload_and_choose.applescript
@@ -76,6 +79,8 @@ Common options:
 - `--project <path>`: project directory containing `content_calendar_day1_day2.csv` and `tracking.csv`.
 - `--wait-login`: wait for the user to log in inside the standard browser.
 - `--dry-run`: upload and fill the form without submitting.
+- `--auto-otp-from-screen`: when Douyin asks for SMS verification, capture the current Mac screen and OCR the visible phone mirror for the 6-digit code.
+- `--otp-image <path>`: when Douyin asks for SMS verification, OCR the specified screenshot for the 6-digit code.
 - `--user-data-dir <dir>`: use a custom persistent browser profile.
 - `--browser-executable <path>`: choose a specific Chrome or Edge executable.
 

@@ -13,6 +13,7 @@
 - 支持抖音允许范围内的定时发布：距离当前至少 2 小时、最多 14 天。
 - 只在上传进度稳定完成、且抖音返回发布成功/审核中/跳转确认后，写回 `tracking.csv` 的 `posted_url` 字段。
 - 点击发布后如果出现短信验证码或原设备扫码验证，脚本会停止并保持 `tracking.csv` 未发布状态。
+- 经用户授权后，可从可见的 iPhone 镜像或截图中识别抖音短信验证码并自动填入发布页；验证码不会打印到日志，也不会持久化保存。
 - 保留 in-app browser 和 macOS 文件选择器备用流程。
 
 ## 目录结构
@@ -26,6 +27,8 @@ douyin-video-uploader/
 │   ├── douyin_playwright_publisher.mjs
 │   ├── douyin_upload_helper.mjs
 │   ├── queue_payload.py
+│   ├── douyin_otp_from_mirror.sh
+│   ├── extract_douyin_otp_from_image.swift
 │   ├── diagnose_macos_upload_permission.sh
 │   ├── file_chooser_macos.applescript
 │   └── macos_click_upload_and_choose.applescript
@@ -76,6 +79,8 @@ node scripts/douyin_playwright_publisher.mjs \
 - `--project <path>`：包含 `content_calendar_day1_day2.csv` 和 `tracking.csv` 的项目目录。
 - `--wait-login`：等待用户在标准浏览器中完成登录。
 - `--dry-run`：上传并填写表单，但不提交发布。
+- `--auto-otp-from-screen`：遇到抖音短信验证时，截取当前 Mac 屏幕，从可见的手机镜像中 OCR 识别 6 位验证码并填入。
+- `--otp-image <path>`：遇到抖音短信验证时，从指定截图中识别验证码并填入。
 - `--user-data-dir <dir>`：指定持久浏览器登录目录。
 - `--browser-executable <path>`：指定 Chrome 或 Edge 可执行文件。
 

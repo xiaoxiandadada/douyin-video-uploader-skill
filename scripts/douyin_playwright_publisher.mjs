@@ -8,6 +8,7 @@ import { chromium } from "playwright-core";
 
 const SKILL_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const QUEUE = path.join(SKILL_ROOT, "scripts", "queue_payload.py");
+const OTP_FROM_MIRROR = path.join(SKILL_ROOT, "scripts", "douyin_otp_from_mirror.sh");
 const DEFAULT_PROJECT = "/Users/fairy/Documents/future/asmr_douyin_2day_launch";
 const UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/post/video?enter_from=publish_page";
 
@@ -26,6 +27,12 @@ function runJson(command, args) {
     throw new Error((result.stderr || result.stdout || `${command} failed`).trim());
   }
   return JSON.parse(result.stdout);
+}
+
+function runText(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  if (result.status !== 0) return "";
+  return (result.stdout || "").trim();
 }
 
 function resolveBrowser() {
@@ -366,15 +373,69 @@ async function waitForPublishConfirmation(page) {
   return { confirmed: false, reason: "timeout_waiting_for_publish_confirmation", state: latest };
 }
 
+function readOtpFromMirror() {
+  const image = argValue("--otp-image");
+  const autoScreen = hasFlag("--auto-otp-from-screen");
+  if (image) return runText(OTP_FROM_MIRROR, [image]);
+  if (autoScreen) return runText(OTP_FROM_MIRROR, []);
+  return "";
+}
+
+async function fillVerificationCode(page, code) {
+  if (!/^[0-9]{6}$/.test(code)) return { filled: false, reason: "invalid_otp_shape" };
+  await clearBlockingOverlays(page);
+  const inputSelectors = [
+    'input[maxlength="6"]',
+    'input[placeholder*="验证码"]',
+    'input[placeholder*="输入"]',
+    '.semi-modal-wrap input',
+  ];
+  for (const selector of inputSelectors) {
+    const locator = page.locator(selector);
+    const count = await locator.count();
+    if (count > 0) {
+      const target = count === 1 ? locator : locator.last();
+      await target.fill(code);
+      await page.waitForTimeout(500);
+      for (const label of ["验证", "确定", "确认"]) {
+        const button = page.getByRole("button", { name: label, exact: true });
+        if ((await button.count()) === 1) {
+          await button.click();
+          return { filled: true, submitted: true };
+        }
+      }
+      return { filled: true, submitted: false, reason: "verify_button_not_found" };
+    }
+  }
+  return { filled: false, reason: "otp_input_not_found" };
+}
+
 async function waitForManualVerification(page) {
   const deadline = Date.now() + 10 * 60 * 1000;
   let latest = await pageState(page);
   console.log(JSON.stringify({
     status: "verification_required",
     message: "Douyin is asking for SMS verification or original-device scan in the launched Chrome/Edge window.",
+    mirrorOtp: hasFlag("--auto-otp-from-screen") || Boolean(argValue("--otp-image")) ? "enabled" : "disabled",
     url: latest.url,
   }, null, 2));
   while (Date.now() < deadline) {
+    const otp = readOtpFromMirror();
+    if (/^[0-9]{6}$/.test(otp)) {
+      const result = await fillVerificationCode(page, otp);
+      console.log(JSON.stringify({
+        status: "otp_from_mirror_attempted",
+        digits: otp.length,
+        filled: result.filled,
+        submitted: Boolean(result.submitted),
+        reason: result.reason || null,
+      }, null, 2));
+      await page.waitForTimeout(3000);
+      latest = await pageState(page);
+      if (!latest.hasVerificationChallenge) {
+        return { verified: true, state: latest };
+      }
+    }
     await page.waitForTimeout(3000);
     latest = await pageState(page);
     if (!latest.hasVerificationChallenge) {

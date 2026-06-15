@@ -58,6 +58,7 @@ Ask again only when the video, account, platform, caption, schedule time, or fin
    - Update `tracking.csv` via `scripts/queue_payload.py --project <root> --index N --mark-posted-url <url-or-success-note>`.
    - If the page does not show a success/audit/redirect confirmation after clicking publish, do not update `tracking.csv`; report the visible state and retry or diagnose the blocker.
    - If Douyin shows an SMS verification or original-device scan challenge after clicking publish, do not mark the item as published. With `--wait-login`, keep the launched Chrome/Edge window open and wait for the user to complete verification there, then continue waiting for publish confirmation.
+   - If the user has authorized mirrored-phone OTP automation, pass `--auto-otp-from-screen` while the iPhone mirror/SMS window is visible, or pass `--otp-image <screenshot>`. The publisher extracts only the current 6-digit Douyin OTP, fills it into Douyin, never logs the code, and never stores it.
    - If comments are available, post/pin the `pinned_comment`; otherwise report it as the next manual/mobile step.
 
 ## Browser Helper
@@ -90,6 +91,8 @@ Useful options:
 
 - `--wait-login`: keep the Chrome/Edge window open while the user logs in once.
 - `--dry-run`: upload and fill the form but do not submit.
+- `--auto-otp-from-screen`: when Douyin asks for SMS verification, capture the current Mac screen and OCR the visible iPhone mirror/SMS window for a 6-digit Douyin code. Use only after the user explicitly authorizes this for their Douyin account.
+- `--otp-image <path>`: read a one-off screenshot with a visible Douyin SMS code and fill that code if a verification challenge appears.
 - `--user-data-dir <dir>`: choose a persistent login profile.
 - `--browser-executable <path>`: choose Chrome or Edge explicitly.
 
