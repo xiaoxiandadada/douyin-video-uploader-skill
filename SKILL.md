@@ -57,7 +57,7 @@ Ask again only when the video, account, platform, caption, schedule time, or fin
    - Capture the visible success state and URL if available.
    - Update `tracking.csv` via `scripts/queue_payload.py --project <root> --index N --mark-posted-url <url-or-success-note>`.
    - If the page does not show a success/audit/redirect confirmation after clicking publish, do not update `tracking.csv`; report the visible state and retry or diagnose the blocker.
-   - If Douyin shows an SMS verification or original-device scan challenge after clicking publish, treat it as blocked by account verification, not as published. Ask the user to complete that verification in the opened browser, then rerun the publisher.
+   - If Douyin shows an SMS verification or original-device scan challenge after clicking publish, do not mark the item as published. With `--wait-login`, keep the launched Chrome/Edge window open and wait for the user to complete verification there, then continue waiting for publish confirmation.
    - If comments are available, post/pin the `pinned_comment`; otherwise report it as the next manual/mobile step.
 
 ## Browser Helper

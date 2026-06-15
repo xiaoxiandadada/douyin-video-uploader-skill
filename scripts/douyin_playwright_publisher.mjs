@@ -366,6 +366,24 @@ async function waitForPublishConfirmation(page) {
   return { confirmed: false, reason: "timeout_waiting_for_publish_confirmation", state: latest };
 }
 
+async function waitForManualVerification(page) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let latest = await pageState(page);
+  console.log(JSON.stringify({
+    status: "verification_required",
+    message: "Douyin is asking for SMS verification or original-device scan in the launched Chrome/Edge window.",
+    url: latest.url,
+  }, null, 2));
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(3000);
+    latest = await pageState(page);
+    if (!latest.hasVerificationChallenge) {
+      return { verified: true, state: latest };
+    }
+  }
+  return { verified: false, reason: "timeout_waiting_for_manual_verification", state: latest };
+}
+
 async function main() {
   const project = argValue("--project", DEFAULT_PROJECT);
   const index = argValue("--index");
@@ -404,6 +422,12 @@ async function main() {
     submitResult = await submit(page, payload, schedule);
     if (submitResult.submitted) {
       publishConfirmation = await waitForPublishConfirmation(page);
+      if (!publishConfirmation.confirmed && publishConfirmation.reason === "verification_challenge_seen" && hasFlag("--wait-login")) {
+        const verification = await waitForManualVerification(page);
+        publishConfirmation = verification.verified
+          ? await waitForPublishConfirmation(page)
+          : { confirmed: false, reason: verification.reason, state: verification.state };
+      }
     }
   }
 
