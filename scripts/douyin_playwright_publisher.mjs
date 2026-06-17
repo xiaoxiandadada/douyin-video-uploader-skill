@@ -451,6 +451,19 @@ async function main() {
   const dryRun = hasFlag("--dry-run");
   const payloadArgs = ["--project", project];
   if (index) payloadArgs.push("--index", index);
+  for (const name of [
+    "--video",
+    "--cover",
+    "--title",
+    "--caption",
+    "--caption-file",
+    "--pinned-comment",
+    "--publish-date",
+    "--publish-time",
+  ]) {
+    const value = argValue(name);
+    if (value !== undefined) payloadArgs.push(name, value);
+  }
   const payload = runJson("python3", [QUEUE, ...payloadArgs]);
   if (!existsSync(payload.video_file)) throw new Error(`Video file not found: ${payload.video_file}`);
 
